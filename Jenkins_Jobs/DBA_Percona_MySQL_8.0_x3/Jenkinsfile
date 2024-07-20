@@ -1,0 +1,87 @@
+pipeline {
+    agent any // Use any available agent
+    parameters {
+        string(name: 'ID', defaultValue: '1', description: 'Add an ID to randomize the name of your database (default is 1))')
+        
+        password(name: 'MYSQL_ROOT_PASSWORD', defaultValue: 'root', description: 'Enter your Password for MySql "root" user')
+    }
+    environment {
+        CHART_REL_LINK1 = 'helm-charts/percona-mysql/ps-operator'
+        CHART_REL_LINK2 = 'helm-charts/percona-mysql/ps-db'
+        KUB_NAMESPACE = 'db-demo'
+
+        MYSQL_OUTPUT = '$CHART_NAME2-${params.ID}-ps-mysql-0 -- mysql -uroot -p${params.MYSQL_ROOT_PASSWORD}'
+        VALUES_FILE = 'values.yaml'
+        GIT_BRANCH = 'features-1.0'
+        CHART_NAME1 = 'mysql-percona-operator'
+        CHART_NAME2 = 'mysql-percona-db'
+
+        BIT_SECRET = credentials('BITBUCKET_INNOCLOUD_READ')
+        GIT_SSH_COMMAND = 'ssh -o StrictHostKeyChecking=no'
+    }
+
+    stages {
+        stage('Check Kube') {
+            steps {
+                echo "Running kubectl test"
+                script {
+                    // Ensure KUBECONFIG is set properly
+                    withCredentials([file(credentialsId: 'k8s', variable: 'KUBECONFIG')]) {
+                        sh "kubectl get nodes"
+                    }
+                }
+            }
+        }
+
+        stage('Install/Update Helm chart') {
+            steps {
+                // Assuming you're using credentials plugin to store your harbor credentials
+                withCredentials([
+                                 file(credentialsId: 'k8s' , variable: 'KUBECONFIG'),
+                                 usernamePassword(credentialsId: 'HarborCredentials', passwordVariable: 'PASSWORD_VAR', usernameVariable: 'USERNAME')]) {
+                    sh """
+                       #Clone only two dir from repo
+                       git clone --filter=blob:none --no-checkout https://$BIT_SECRET@bitbucket.org/innowise-group/devops.git
+                       cd devops/
+                       git sparse-checkout set --cone
+                       git checkout $GIT_BRANCH
+                       git sparse-checkout set $CHART_REL_LINK1       #first dir 
+                       git sparse-checkout add $CHART_REL_LINK2       #second dir
+
+                       helm install $CHART_NAME1-${params.ID} $CHART_REL_LINK1 -f $CHART_REL_LINK1/$VALUES_FILE --namespace $KUB_NAMESPACE
+                       sleep 2
+                       kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=ps-operator --namespace $KUB_NAMESPACE
+                       #-------------Add password to valuse file
+                       helm install $CHART_NAME2-${params.ID} $CHART_REL_LINK2 -f $CHART_REL_LINK2/$VALUES_FILE --namespace $KUB_NAMESPACE --set-literal passwords.root=${params.MYSQL_ROOT_PASSWORD} 
+                       #> MYSQL_OUTPUT.txt
+                       #cat MYSQL_OUTPUT.txt
+                       #tail -n 1 MYSQL_OUTPUT.txt > TAIL.txt
+                       #MYSQL_OUTPUT=`cat TAIL.txt` #don't work in pipeline
+                       #read MYSQL_OUTPUT < TAIL.txt #don't work in pipeline
+
+                       #sleep 60
+                       #kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=mysql --namespace $KUB_NAMESPACE
+
+                       #-------------Test enterence with password 
+                       #ROOT_PASSWORD=${params.MYSQL_ROOT_PASSWORD}
+                       #kubectl -n $KUB_NAMESPACE exec $MYSQL_OUTPUT
+                        #sleep 3 && exit
+                       """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                try {
+                
+                 def file = notificator(params.request, params.requestorType)
+                 
+                }
+                catch (java.io.NotSerializableException e)
+                {}
+                 }
+        }
+    }
+}

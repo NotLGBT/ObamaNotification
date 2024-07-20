@@ -1,0 +1,100 @@
+import java.util.UUID
+pipeline {
+    agent any // Use any available agent
+    parameters {
+        string(name: 'oracle_sid', defaultValue: 'ORCLCDB', description: 'Database name (ORACLE_SID)')
+        string(name: 'oracle_pdb', defaultValue: 'ORCLPDB1', description: 'PDB name')
+        password(name: 'oracle_pwd', defaultValue: '23' + UUID.randomUUID().toString(), description: 'SYS, SYSTEM and PDBADMIN password')
+        string(name: 'oracle_characterset', defaultValue: 'AL32UTF8', description: 'The character set to use')
+        string(name: 'oracle_edition', defaultValue: 'enterprise', description: 'The database edition')
+        string(name: 'persistence.size', defaultValue: '100g', description: 'Size of persistence storage')
+        string(name: 'loadBalService', defaultValue: 'false', description: 'Create a load balancer service instead of NodePort')
+        string(name: 'image', defaultValue: 'container-registry.oracle.com/database/enterprise:19.3.0.0', description: 'Image to pull')
+        string(name: 'imagePullPolicy', defaultValue: 'Always', description: 'Image pull policy')
+        // also you can use a docker config token if you have one  Docker_Config_JSON
+        string(name: 'imagePullSecrets', defaultValue: '', description: 'container registry login/password')
+        string(name: 'enable_archivelog', defaultValue: 'false', description: 'Set true to enable archive log mode when creating the database')
+        string(name: 'CHART_NAME1', defaultValue: 'oracle', description: 'Helm release name')
+        string(name: 'labels', defaultValue: 'app:oracle-db', description: 'Mark deployment, must to validate kubectl ports and ip')
+ 
+    }
+    environment {
+        CHART_REL_LINK1 = 'helm-charts/Templates/oracle-db'
+        Docker_Config_JSON = """Input your value file like this 
+                                {
+                        	"auths": {
+                        		"container-registry.oracle.com": {
+                        			"auth": "YWxpZHpoYW4uc2hvZXZAaW5ub3dpc2UuY29tOllfbm1zX1VLZXIySD04d3JENTVhQmI="
+                        		} """
+        KUBE_NAMESPACE = 'oracle'
+
+        VALUES_FILE = 'values.yaml'
+        GIT_BRANCH = 'jenkins_pipeline'
+        CHART_NAME1 = "${params.CHART_NAME1}"
+
+        BIT_SECRET = credentials('BITBUCKET_INNOCLOUD_READ')
+        GIT_SSH_COMMAND = 'ssh -o StrictHostKeyChecking=no'
+        NODE_IP = ' '
+        NODE_PORT = ' '
+    }
+
+    stages {
+        stage('Check Kube') {
+            steps {
+                echo "Running kubectl test"
+                script {
+                    // Ensure KUBECONFIG is set properly
+                    withCredentials([file(credentialsId: 'k8s', variable: 'KUBECONFIG')]) {
+                        sh "kubectl get nodes"
+                    }
+                }
+            }
+        }
+
+        stage('Install/Update Helm chart') {
+            steps {
+                // Assuming you're using credentials plugin to store your harbor credentials
+                withCredentials([
+                                 file(credentialsId: 'k8s' , variable: 'KUBECONFIG'),
+                                 usernamePassword(credentialsId: 'HarborCredentials', passwordVariable: 'PASSWORD_VAR', usernameVariable: 'USERNAME')]) {
+                   
+                    //helm install $CHART_NAME1-${params.ID} $CHART_REL_LINK1 -f $CHART_REL_LINK1/$VALUES_FILE --set oracle_sid: ORCLCDB, oracle_pdb: ORCLPDB1, oracle_pwd: Auto generated, oracle_characterset: AL32UTF8, oracle_edition: enterprise, persistence.size: 100g, persistence.storageClass: , loadBalService: false, image: container-registry.oracle.com/database/enterprise:19.3.0.0, imagePullPolicy: Always, imagePullSecrets: --namespace $KUB_NAMESPACE
+                       
+                    sh """
+                       #Clone only two dir from repo
+                       git clone --filter=blob:none --no-checkout https://$BIT_SECRET@bitbucket.org/innowise-group/devops.git
+                       cd devops/
+                       git sparse-checkout set --cone
+                       git checkout $GIT_BRANCH
+                       git sparse-checkout set $CHART_REL_LINK1       #first dir 
+                       helm uninstall $CHART_NAME1 -n oracle-19
+                       helm install $CHART_NAME1 $CHART_REL_LINK1 -f $CHART_REL_LINK1/$VALUES_FILE --set oracle_sid={params.oracle_sid}, --set oracle_pdb={params.oracle_pdb}, --set oracle_pwd={params.oracle_pwd}, --set oracle_characterset={params.oracle_characterset}, --set image={params.image},  --set labels={params.labels} --namespace $KUBE_NAMESPACE
+                       """
+                    sh "kubectl label pods -l app=oracle-oracle-db release=$CHART_NAME1 --namespace=$KUBE_NAMESPACE"
+                    // --set imagePullPolicy={params.imagePullPolicy},
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                //  withCredentials([
+                //                  file(credentialsId: 'k8s' , variable: 'KUBECONFIG'),
+                //                  usernamePassword(credentialsId: 'HarborCredentials', passwordVariable: 'PASSWORD_VAR', usernameVariable: 'USERNAME')]) {
+                                  
+                                 try {
+                
+                 def file = blank(params.request, params.requestorType)
+                 
+                }
+                catch (java.io.NotSerializableException e)
+                {}    
+                                //  }
+                
+                 }
+        }
+    }
+}
+
+

@@ -1,0 +1,46 @@
+@Library('Notification') _
+
+import groovy.json.JsonSlurperClassic 
+
+pipeline {
+    agent any
+     parameters {
+        string(name: 'request', defaultValue: 'None', description: 'Executor Name')
+        string(name: 'requestorType', defaultValue: 'None', description: 'Execution project Name')
+    }
+    stages {
+        stage('Setup') { 
+            steps {
+                script {
+                    sh """
+                    echo "Hello World"
+        """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                // Use this try/catch block at post always condition to invoke a notification function 
+                try {
+                // Define status color based on BUILD_STATUS
+                
+ 
+                // Send Google Chat notification
+                //  def request = params.requestor
+                //  def requestorType = params.requestorType
+                
+                 def file = notificator(params.request, params.requestorType)
+                  //googlechatnotification url: "https://chat.googleapis.com/v1/spaces/AAAA05NY0J8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=lJc8wewy6VExB9NAgdzlvawb--qphjfu-Mv6NOinZkA", messageFormat: "card", message: updatedJson
+
+                }
+                catch (java.io.NotSerializableException e)
+                {}
+                 }
+        }
+    }
+}
+                
+

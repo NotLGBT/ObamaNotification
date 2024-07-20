@@ -1,0 +1,68 @@
+pipeline {
+    agent any // Use any available agent
+    parameters {
+        choice(name: 'VERSION', choices: ['16', '14-8', '11'], description: 'Pick your version')
+
+        string(name: 'DataBaseName', defaultValue: 'database-1', description: 'Enter you database Name Here:')
+        
+        password(name: 'ROOT_PASSWORD', defaultValue: 'root', description: 'Enter a password for "postgres" user:')
+    }
+
+    environment {
+        CHART_REL_LINK1 = "helm-charts/postgresql-${params.VERSION}"
+        //CHART_REL_LINK2 = 'helm-charts/percona-mysql/ps-db'
+        VALUES_FILE = 'values.yaml'
+        KUB_NAMESPACE = 'db-demo'
+        GIT_BRANCH = 'databases'
+        CHART_NAME1 = "postgresql-${params.VERSION}"
+        //CHART_NAME2 = 'mysql-percona-db-jen-test'
+        BIT_SECRET = credentials('BITBUCKET_INNOCLOUD_READ')
+        GIT_SSH_COMMAND = 'ssh -o StrictHostKeyChecking=no'
+    }
+
+    stages {
+        stage('Check Kube') {
+            steps {
+                echo "Running kubectl test"
+                script {
+                    // Ensure KUBECONFIG is set properly
+                    withCredentials([file(credentialsId: 'k8s', variable: 'KUBECONFIG')]) {
+                        sh "kubectl get nodes"
+                    }
+                }
+            }
+        }
+
+        stage('Install/Update Helm chart') {
+            steps {
+                // Assuming you're using credentials plugin to store your harbor credentials
+                withCredentials([
+                                 file(credentialsId: 'k8s' , variable: 'KUBECONFIG'),
+                                 usernamePassword(credentialsId: 'HarborCredentials', passwordVariable: 'PASSWORD_VAR', usernameVariable: 'USERNAME')]) {
+                    sh """
+                       git clone --filter=blob:none --no-checkout https://$BIT_SECRET@bitbucket.org/innowise-group/devops.git
+                       cd devops/
+                       git sparse-checkout set --cone
+                       git checkout $GIT_BRANCH
+                       git sparse-checkout set $CHART_REL_LINK1
+                       helm dependency build $CHART_REL_LINK1
+                       helm install $CHART_NAME1-${params.DataBaseName} $CHART_REL_LINK1 -f $CHART_REL_LINK1/$VALUES_FILE --namespace $KUB_NAMESPACE --set auth.postgresPassword="${params.ROOT_PASSWORD}"
+                       """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                try {
+                
+                 def file = notificator(params.request, params.requestorType)
+                 
+                }
+                catch (java.io.NotSerializableException e)
+                {}
+                 }
+        }
+    }
+}
