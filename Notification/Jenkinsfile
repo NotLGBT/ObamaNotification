@@ -1,0 +1,80 @@
+// library 'notificator@default'
+pipeline {
+    agent any // Use any available agent
+    parameters {
+        string(name: 'oracleEdition', defaultValue: 'XE', description: 'Choose an Oracle edition: XE, SE, EE')
+        string(name: 'oracleDBName', defaultValue: 'ORCLCDB', description: 'Name of the Oracle Database')
+        string(name: 'oraclePDBName', defaultValue: 'ORCLPDB1', description: 'Name of the Oracle Pluggable Database')
+        string(name: 'oracleCharset', defaultValue: 'AL32UTF8', description: 'Character set for the database')
+        string(name: 'oracleSid', defaultValue: 'ORCLCDB', description: 'Oracle SID')
+        password(name: 'oraclePassword', defaultValue: 'OraclePwd1234@@@', description: 'Password for SYS, SYSTEM and PDB_ADMIN')
+        string(name: 'choosedOS', defaultValue: 'OracleLinux', description: "Choose between OracleLinux and CentOS")
+    }
+
+    environment {
+        CHART_REL_LINK = 'helm-charts/Templates/oracle-db-reserved'
+        VALUES_FILE = 'values.yaml'
+        KUBE_NAMESPACE = 'databases'
+        GIT_BRANCH = 'jenkins_pipeline'
+        CHART_NAME = 'oracle-db-helm-chart'
+        BIT_SECRET = credentials('BITBUCKET_INNOCLOUD_READ')
+        GIT_SSH_COMMAND = 'ssh -o StrictHostKeyChecking=no'
+    }
+
+    stages {
+        stage('Check Kube') {
+            steps {
+                echo "Running kubectl test"
+                script {
+                    // Ensure KUBECONFIG is set properly
+                    withCredentials([file(credentialsId: 'KUBECONFIG', variable: 'KUBECONFIG')]) {
+                        sh "kubectl describe service --all-namespaces | grep -i nodeport"
+                    }
+                }
+            }
+        }
+
+        stage('Install/Update Helm chart') {
+            steps {
+                withCredentials([
+                    file(credentialsId: 'KUBECONFIG', variable: 'KUBECONFIG'), //setup access to kubernetes
+                    usernamePassword(credentialsId: 'HarborCredentials', passwordVariable: 'PASSWORD_VAR', usernameVariable: 'USERNAME') //using docker credentials 
+                ]) {
+                    sh '''
+                    #!/bin/bash
+                    set -e  
+
+                    git clone --filter=blob:none --no-checkout https://$BIT_SECRET@bitbucket.org/innowise-group/devops.git
+                    cd devops/
+                    git sparse-checkout set --cone
+                    git checkout $GIT_BRANCH
+                    git sparse-checkout set $CHART_REL_LINK
+                    helm dependency build $CHART_REL_LINK
+                    
+                    helm install $CHART_NAME \
+                    -f $CHART_REL_LINK/$VALUES_FILE \
+                    $CHART_REL_LINK \
+                    --namespace $KUBE_NAMESPACE \
+                      --set oracleEdition="XE" \
+                      --set oracleDBName="ORCLCDB" \
+                      --set oraclePDBName="ORCLPDB1" \
+                      --set oracleCharset="AL32UTF8" \
+                      --set oracleSid="ORCLCDB" \
+                      --set oraclePassword="OraclePwd1234@@@21345" 
+                      ##--set image.choosedOS="OracleLinux"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                try {
+                    def file = blank(params.request, params.requestorType)
+                } catch (java.io.NotSerializableException e) {}
+            }
+        }
+    }
+}

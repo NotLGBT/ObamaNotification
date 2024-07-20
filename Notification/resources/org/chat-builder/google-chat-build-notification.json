@@ -1,0 +1,52 @@
+{
+    "cardsV2":[
+       {
+          "cardId":"unique-card-id",
+          "card":{
+             "header":{            
+                "title":"None",
+                "subtitle":"${BUILD_NUMBER} \n Build ${BUILD_ID}",
+                "imageUrl":"https://cdn.britannica.com/43/172743-138-545C299D/overview-Barack-Obama.jpg?w=800&h=450&c=crop",
+                "imageType":"CIRCLE"
+             },
+             "sections":[
+                {   
+                    
+                   "header":"<font color= ${STATUS_COLOR} > ${BUILD_STATUS} </font>",
+                   "collapsible":true,
+                   "uncollapsibleWidgetsCount":1,
+                   "widgets":[
+                      {
+                         "textParagraph":{
+                            "text":"Click <a href=\"${BUILD_URL}\">here</a> for more info"
+                         }
+                      },
+                      {
+                         "divider":{}
+                      },
+                      {
+                         "decoratedText":{
+                            "icon":{
+                               "knownIcon":"MAP_PIN"
+                            },
+                            "text":"<i> Job :  ${JOB_NAME}</i>"
+                         }
+                            
+                      },
+                      {
+                        "decoratedText":{
+                           "icon":{
+                              "knownIcon":"EMAIL"
+                           },
+                           "text":"<i> Gmail :  ${BUILD_USER}</i>"
+                        }
+                           
+                      }
+                   ]
+                }
+             ]
+          }
+       }
+    ]
+ }
+ 
